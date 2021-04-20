@@ -3,11 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _ortmodule_utils as _utils, _ortmodule_io as _io
-from ._ortmodule_graph_execution_manager import GraphExecutionManager, _run_forward
-
+from . import _utils, _io
+from ._graph_execution_manager import GraphExecutionManager, _run_forward
+from ._execution_agent import TrainingAgent
 import onnx
-import onnxruntime
 import torch
 
 
@@ -179,8 +178,10 @@ class TrainingManager(GraphExecutionManager):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        self._execution_agent = onnxruntime.training.TrainingAgent(self._optimized_onnx_model.SerializeToString(),
-                                                                   session_options, providers, provider_options)
+        self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
+                                              session_options,
+                                              providers,
+                                              provider_options)
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""
