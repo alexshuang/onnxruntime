@@ -19,14 +19,12 @@
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
-#include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
-#include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
 #include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
-#ifdef USE_DIRECTML
+#ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
 
@@ -92,6 +90,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setOpt
     const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
     size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
     wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+    if(newString == NULL) throwOrtException(jniEnv, 1, "Not enough memory");
     wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->SetOptimizedModelFilePath((OrtSessionOptions*) handle, (const wchar_t*) newString));
     free(newString);
@@ -162,6 +161,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_enable
   const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
   size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
   wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+  if(newString == NULL) throwOrtException(jniEnv, 1, "Not enough memory");
   wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
   checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->EnableProfiling(options, (const wchar_t*) newString));
   free(newString);
@@ -387,40 +387,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
   #else
     (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addOpenVINO
- * Signature: (JJLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addOpenVINO
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring deviceIDString) {
-    (void)jobj;
-  #ifdef USE_OPENVINO
-    const char* deviceID = (*jniEnv)->GetStringUTFChars(jniEnv, deviceIDString, NULL);
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_OpenVINO((OrtSessionOptions*) handle, deviceID));
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv,deviceIDString,deviceID);
-  #else
-    (void)apiHandle;(void)handle;(void)deviceIDString; // Parameters used when OpenVINO is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with OpenVINO support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addTensorrt
- * Signature: (JJI)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTensorrt
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
-    (void)jobj;
-  #ifdef USE_TENSORRT
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tensorrt((OrtSessionOptions*) handle, deviceNum));
-  #else
-    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when TensorRT is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TensorRT support.");
   #endif
 }
 
