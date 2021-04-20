@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io
-from ._graph_execution_manager import GraphExecutionManager, _run_forward
+from ._graph_execution_manager import GraphExecutionManager
 from ._execution_agent import InferenceAgent
 
 import onnx
@@ -53,14 +53,15 @@ class InferenceManager(GraphExecutionManager):
             # Create execution session creates the inference_session
             self._create_execution_agent()
 
-        user_outputs, _ = _run_forward(self._execution_agent,
-                                       self._optimized_onnx_model,
-                                       self._device,
-                                       *_io._convert_input_to_list(self._flattened_module.named_parameters(),
-                                                                   self._graph_info.user_input_names,
-                                                                   self._flattened_module.named_buffers(),
-                                                                   inputs,
-                                                                   kwargs))
+        user_outputs, _ = GraphExecutionManager.execution_session_run_forward(self._execution_agent,
+                                                                              self._optimized_onnx_model,
+                                                                              self._device,
+                                                                              *_io._convert_input_to_list(
+                                                                                  self._flattened_module.named_parameters(),
+                                                                                  self._graph_info.user_input_names,
+                                                                                  self._flattened_module.named_buffers(),
+                                                                                  inputs,
+                                                                                  kwargs))
 
         return _io.populate_user_output_from_schema_and_outputs(self._module_output_schema,
                                                                 self._graph_info.user_output_names,

@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io
-from ._graph_execution_manager import GraphExecutionManager, _run_forward
+from ._graph_execution_manager import GraphExecutionManager
 from ._execution_agent import TrainingAgent
 import onnx
 import torch
@@ -61,21 +61,20 @@ class TrainingManager(GraphExecutionManager):
             gradient implementation for self.forward_graph.'''
 
             @staticmethod
-            def forward(ctx, *inputs, **kwargs):
+            def forward(ctx, *inputs):
                 '''Performs forward pass based on user input and PyTorch initializer
 
                 Autograd Function's apply() doesn't support keyword arguments,
                 so `*inputs` has all the arguments - keyword arguments converted
-                to positional by the caller.
+                to positional/keywords during `TrainingManager.forward`.
 
                 Module outputs are returned to the user
                 '''
 
-                user_outputs, ctx.run_info = _run_forward(self._execution_agent,
-                                                          self._optimized_onnx_model,
-                                                          self._device,
-                                                          *inputs,
-                                                          **kwargs)
+                user_outputs, ctx.run_info = GraphExecutionManager.execution_session_run_forward(self._execution_agent,
+                                                                                                 self._optimized_onnx_model,
+                                                                                                 self._device,
+                                                                                                 *inputs)
 
                 # Disable materializing grads then None object will not be converted to a tensor filled with zeros prior to calling backward.
                 # Also save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
