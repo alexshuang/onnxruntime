@@ -22,14 +22,17 @@ THE SOFTWARE.
 
 #include <iostream>
 #include <ctime>
+#include <sys/time.h>
 
 // cuda header file
-#include "cuda/cuda_runtime.h"
-#include "cuda/cuda_fp16.h"
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <assert.h>
 
 #define NUM_LOOPS	1000
 
-#define GPU_WARP_SIZE	64
+#define GPU_WARP_SIZE	32
 #define ORT_ENFORCE(x)	assert(x)
 
 //#include "layer_norm_impl.h"
@@ -38,21 +41,23 @@ using namespace std;
 
 #if 1
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
-  return __shfl(value, srcLane, width);
+__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  return __shfl_sync(mask, value, srcLane, width);
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
-  return __shfl_xor(value, laneMask, width);
+__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  return __shfl_xor_sync(mask, value, laneMask, width);
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
-  return __shfl_down(value, delta, width);
+__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  return __shfl_up_sync(mask, value, delta, width);
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  return __shfl_down_sync(mask, value, delta, width);
 }
 #else
 template <typename T>
@@ -225,7 +230,7 @@ struct SharedMemory;
 template <>
 struct SharedMemory<float> {
   __device__ float* getPointer() {
-    HIP_DYNAMIC_SHARED( float, s_float)
+    extern __shared__ float s_float[];
     return s_float;
   }
 };
@@ -233,7 +238,7 @@ struct SharedMemory<float> {
 template <>
 struct SharedMemory<double> {
   __device__ double* getPointer() {
-    HIP_DYNAMIC_SHARED( double, s_double)
+    extern __shared__ double s_double[];
     return s_double;
   }
 };
@@ -296,7 +301,7 @@ __global__ void cuApplyLayerNorm(
 
 template <typename T, typename U, bool simplified>
 void HostApplyLayerNorm(
-    const cudaDeviceProp_t& prop,
+    const cudaDeviceProp& prop,
     cudaStream_t stream,
     T* output,
     U* mean,
@@ -316,7 +321,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, simplified><<<dim3(blocks), dim3(threads), nshared, stream>>>(
+  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, stream>>>(
       output,
       mean,
       invvar,
@@ -335,8 +340,9 @@ int main()
     float *d_mean;
     float *d_invvar;
 	double epsilon = 0.00000001;
+    struct timeval tpstart,tpend;
 
-    cudaDeviceProp_t devProp;
+    cudaDeviceProp devProp;
     cudaGetDeviceProperties(&devProp, 0);
     cout << "Device name " << devProp.name << endl;
 
@@ -367,12 +373,17 @@ int main()
     // Memory transfer from host to device
     cudaMemcpy(d_input, input, input_size * sizeof(*input), cudaMemcpyHostToDevice);
 
+    HostApplyLayerNorm<__half, float, false>(devProp, stream,
+                                    d_output, d_mean, d_invvar, d_input, n1, n2, epsilon, d_gamma, d_beta);
+    gettimeofday(&tpstart, NULL);
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		HostApplyLayerNorm<__half, float, false>(devProp, stream,
 										d_output, d_mean, d_invvar, d_input, n1, n2, epsilon, d_gamma, d_beta);
 	}
 	cudaDeviceSynchronize();
-	cout << "launch kernel done." << endl;
+    gettimeofday(&tpend, NULL);
+    long elapsed = 1000000 * (tpend.tv_sec - tpstart.tv_sec) + tpend.tv_usec - tpstart.tv_usec;
+	cout << "launch kernel done: avg " << elapsed / NUM_LOOPS << " us" << endl;
 
     // free the resources on device side
     cudaFree(d_input);
