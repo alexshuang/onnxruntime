@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #include <iostream>
 #include <ctime>
+#include <sys/time.h>
 
 // hip header file
 #include "hip/hip_runtime.h"
@@ -314,6 +315,7 @@ int main()
     float *d_mean;
     float *d_invvar;
 	double epsilon = 0.00000001;
+    struct timeval tpstart,tpend;
 
     hipDeviceProp_t devProp;
     hipGetDeviceProperties(&devProp, 0);
@@ -346,12 +348,17 @@ int main()
     // Memory transfer from host to device
     hipMemcpy(d_input, input, input_size * sizeof(*input), hipMemcpyHostToDevice);
 
+    HostApplyLayerNorm<__half, float, false>(devProp, stream,
+                                    d_output, d_mean, d_invvar, d_input, n1, n2, epsilon, d_gamma, d_beta);
+    gettimeofday(&tpstart, NULL);
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		HostApplyLayerNorm<__half, float, false>(devProp, stream,
 										d_output, d_mean, d_invvar, d_input, n1, n2, epsilon, d_gamma, d_beta);
 	}
 	hipDeviceSynchronize();
-	cout << "launch kernel done." << endl;
+    gettimeofday(&tpend, NULL);
+    long elapsed = 1000000 * (tpend.tv_sec - tpstart.tv_sec) + tpend.tv_usec - tpstart.tv_usec;
+	cout << "launch kernel done: avg " << elapsed / NUM_LOOPS << " us" << endl;
 
     // free the resources on device side
     hipFree(d_input);
