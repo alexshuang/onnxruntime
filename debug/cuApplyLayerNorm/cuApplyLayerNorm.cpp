@@ -348,8 +348,6 @@ int main()
     // Memory transfer from host to device
     hipMemcpy(d_input, input, input_size * sizeof(*input), hipMemcpyHostToDevice);
 
-    HostApplyLayerNorm<__half, float, false>(devProp, stream,
-                                    d_output, d_mean, d_invvar, d_input, n1, n2, epsilon, d_gamma, d_beta);
     gettimeofday(&tpstart, NULL);
 	for (int i = 0; i < NUM_LOOPS; i++) {
 		HostApplyLayerNorm<__half, float, false>(devProp, stream,
@@ -358,7 +356,7 @@ int main()
 	hipDeviceSynchronize();
     gettimeofday(&tpend, NULL);
     long elapsed = 1000000 * (tpend.tv_sec - tpstart.tv_sec) + tpend.tv_usec - tpstart.tv_usec;
-	cout << "launch kernel done: avg " << elapsed / NUM_LOOPS << " us" << endl;
+	cout << "launch kernel done: " << NUM_LOOPS << " loops, total " << elapsed << " us, avg " << elapsed / NUM_LOOPS << " us" << endl;
 
     // free the resources on device side
     hipFree(d_input);
