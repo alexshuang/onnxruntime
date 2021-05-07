@@ -202,7 +202,7 @@ __global__ void cuComputePartGradGammaBeta(
   const int i1_beg = blockIdx.y * segs_per_block * blockDim.y * blockDim.y;
   const int i1_beg_plus_one = (blockIdx.y + 1) * segs_per_block * blockDim.y * blockDim.y;
   const int i1_end = i1_beg_plus_one < n1 ? i1_beg_plus_one : n1;
-  const int row_stride = blockDim.x + 1;
+  const int row_stride = blockDim.x + 1 + 1;
   const int thr_load_col_off = (threadIdx.x * blockDim.y) & (blockDim.x - 1);
   const int thr_load_row_off = (threadIdx.x * blockDim.y) / blockDim.x + threadIdx.y * blockDim.y;
   const int i2_off = blockIdx.x * blockDim.x + thr_load_col_off;
@@ -389,30 +389,31 @@ __global__ void cuComputeGradInput(
     if (blockDim.y > 1) {
       SharedMemory<U> shared;
       U* buf = shared.getPointer();
+      const int padding = threadIdx.x / 16;
       for (int offset = blockDim.y / 2; offset > 0; offset /= 2) {
         // upper half of warps write to shared
         if (threadIdx.y >= offset && threadIdx.y < 2 * offset) {
           const int wrt_i = (threadIdx.y - offset) * blockDim.x + threadIdx.x;
-          buf[2 * wrt_i] = sum_loss1;
-          buf[2 * wrt_i + 1] = sum_loss2;
+          buf[2 * wrt_i + padding] = sum_loss1;
+          buf[2 * wrt_i + 1 + padding] = sum_loss2;
         }
         __syncthreads();
         // lower half merges
         if (threadIdx.y < offset) {
           const int read_i = threadIdx.y * blockDim.x + threadIdx.x;
-          sum_loss1 += buf[2 * read_i];
-          sum_loss2 += buf[2 * read_i + 1];
+          sum_loss1 += buf[2 * read_i + padding];
+          sum_loss2 += buf[2 * read_i + 1 + padding];
         }
         __syncthreads();
       }
       if (threadIdx.y == 0) {
-        buf[2 * threadIdx.x] = sum_loss1;
-        buf[2 * threadIdx.x + 1] = sum_loss2;
+        buf[2 * threadIdx.x + padding] = sum_loss1;
+        buf[2 * threadIdx.x + 1 + padding] = sum_loss2;
       }
       __syncthreads();
       if (threadIdx.y != 0) {
-        sum_loss1 = buf[2 * threadIdx.x];
-        sum_loss2 = buf[2 * threadIdx.x + 1];
+        sum_loss1 = buf[2 * threadIdx.x + padding];
+        sum_loss2 = buf[2 * threadIdx.x + 1 + padding];
       }
     }
     // all threads now have the two sums over l
@@ -483,8 +484,8 @@ void HostLayerNormGradient(
 
   const dim3 threads2(warp_size, 4, 1);
   const dim3 blocks2((n2 + threads2.x - 1) / threads2.x, part_size, 1);
-  const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1);
-  const int nshared2_b = threads2.x * threads2.y * sizeof(U);
+  const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1 + 1);
+  const int nshared2_b = (threads2.x + 1) * threads2.y * sizeof(U);
   const int nshared2 = nshared2_a > nshared2_b ? nshared2_a : nshared2_b;
   if (mean == nullptr && !simplified) {
     // use_mean == false, simplified == false -> Inverted Layer Norm
@@ -529,7 +530,7 @@ void HostLayerNormGradient(
   const dim3 blocks1(1, std::min<unsigned int>(static_cast<unsigned int>(n1), static_cast<unsigned int>(maxGridY)), 1);
   const dim3 threads1(warp_size, 4, 1);
   int nshared =
-      threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
+      threads1.y > 1 ? threads1.y * (threads1.x + 4) * sizeof(U) : 0;
 
   if (mean == nullptr && !simplified) {
     hipLaunchKernelGGL(HIP_KERNEL_NAME(cuComputeGradInput<T, U, false, false>), dim3(blocks1), dim3(threads1), nshared, stream, 
