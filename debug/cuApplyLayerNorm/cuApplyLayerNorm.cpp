@@ -126,9 +126,9 @@ __device__ void cuWelfordMuSigma2(
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     const T* lvals = vals + i1 * n2;
-    int l = 4 * thrx;
-    for (; l + 3 < n2; l += 4 * numx) {
-      for (int k = 0; k < 4; ++k) {
+    int l = 8 * thrx;
+    for (; l + 7 < n2; l += 8 * numx) {
+      for (int k = 0; k < 8; ++k) {
         U curr = static_cast<U>(lvals[l + k]);
         cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
       }
@@ -292,7 +292,7 @@ void HostApplyLayerNorm(
   const int warp_size = prop.warpSize;
   assert(warp_size == GPU_WARP_SIZE);
 
-  const dim3 threads(warp_size, 4, 1);
+  const dim3 threads(warp_size, 2, 1);
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
